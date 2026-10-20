@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "test": "node --disable-warning=ExperimentalWarning --test",
     "dev": "wrangler dev",
     "preview": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -20,3 +21,4 @@
     "node": ">=22"
   }
 }
+
