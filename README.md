@@ -240,6 +240,14 @@ npm run dev
 
 Wrangler 會顯示本機預覽網址。`.dev.vars` 只供本機使用，不要上傳到 GitHub。
 
+執行自動化郵件流程測試：
+
+```bash
+npm test
+```
+
+測試使用記憶體 SQLite 和假 Resend API 回應，不會連線到真實 Resend、寄出郵件或改動 DNS。`npm run build` 會另外檢查部署檔案並執行 Wrangler dry run。
+
 ## 免費額度、儲存與停止行為
 
 | 服務 | Jason Mail 用途 | 免費保護方式 |
