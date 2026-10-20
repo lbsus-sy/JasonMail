@@ -8,20 +8,17 @@
 
 ## 快速部署摘要
 
-如果你已經有 Cloudflare、Resend 帳號和一個放在 Cloudflare DNS 的網域，照這個順序做：
+Windows 新手可用一鍵安裝器：
 
-1. 下載 ZIP，解壓縮後開啟 `JasonMail` 資料夾。
-2. 安裝 Node.js 22 或更新版本，開啟終端機並執行 `npm ci`。
-3. 登入 Cloudflare：`npx wrangler login`。
-4. 建立 D1 資料庫和 KV 命名空間，把輸出的 ID 填進 `wrangler.jsonc`。
-5. 執行 `npx wrangler d1 migrations apply jasonmail --remote`。
-6. 設定 `SETUP_TOKEN`、`RESEND_API_KEY` 和 `RESEND_WEBHOOK_SECRET` 三個 Worker secrets。
-7. 執行 `npm run deploy`。
-8. 在 Cloudflare DNS 建立代理 DNS 記錄，再替 Worker 加上網域 Route。
-9. 在 Resend 驗證你的郵件網域，加入 Resend 顯示的 DNS 記錄並建立收件 webhook。
-10. 開啟網站，用 `SETUP_TOKEN` 建立管理員帳號，新增第一個郵件地址，寄一封測試信。
+1. 從 [GitHub 專案頁](https://github.com/lbsus-sy/JasonMail) 下載 ZIP 並解壓縮。
+2. 雙擊 `install.cmd`。如果電腦沒有 Node.js 22+，安裝器會引導安裝官方 Node.js LTS。
+3. 依畫面登入 Cloudflare，輸入 Resend API key；安裝器會建立或重用 D1/KV、部署 Worker、建立或重用 `email.received` webhook，並設定 Worker secrets。
+4. 依下方「連接自己的網域」和「建立 Resend 網域和 DNS 記錄」完成網域設定。安裝器不會替你修改 DNS。
+5. 開啟安裝器顯示的網址，用一次性 `SETUP_TOKEN` 建立管理員，再新增第一個郵件地址。
 
-第一次部署也可以跟著下面的完整操作做。即使沒寫過程式，也只需要複製命令、貼上 ID 和照畫面指示設定。
+若 Resend API 無法建立 webhook，安裝器會顯示 Dashboard 操作步驟並遮蔽提示你輸入 `whsec_...` signing secret。Mac/Linux 使用者和想手動管理每個步驟的人，請看下方手動部署流程。
+
+若安裝途中中斷，修復畫面指出的問題後可重新雙擊 `install.cmd`。安裝器會保留有效的 D1/KV ID、重用同一網址的 Resend webhook；如果已經建立管理員，重跑不會重設其一次性 `SETUP_TOKEN`。
 
 ## Jason Mail 可以做什麼？
 
@@ -52,6 +49,8 @@ Jason Mail 是輕量自架郵局，不是 Gmail 的完整替代品。首版不�
 Resend 負責郵件傳輸；Jason Mail 負責瀏覽器介面、地址、郵件資料和聊天室。收件 webhook 會驗證 Resend 簽章、去除重複事件，並向 Resend 取得郵件正文和附件。網站不會替你修改 DNS。
 
 ## 從零開始部署
+
+> **Windows 新手：** 建議使用專案根目錄的 `install.cmd`。下方手動流程供 macOS/Linux 使用者和進階部署者參考。
 
 ### 你需要準備
 
@@ -88,18 +87,18 @@ npx wrangler login
 建立 D1 資料庫：
 
 ```bash
-npx wrangler d1 create jasonmail
+npx wrangler d1 create jasonmail --binding DB --update-config
 ```
 
-在命令輸出中複製 `database_id`，打開 `wrangler.jsonc`，取代 `REPLACE_WITH_D1_DATABASE_ID`。
+命令會建立資料庫並更新設定。Jason Mail 需要 D1 binding 名稱為 `DB`。如果你已經有資料庫，使用安裝器可以自動重用；手動操作時請保留正確的資料庫 ID，並確認 `database_name` 對應你建立的資料庫。
 
 建立 KV 命名空間：
 
 ```bash
-npx wrangler kv namespace create FILES
+npx wrangler kv namespace create FILES --binding FILES --update-config
 ```
 
-複製輸出的 namespace ID，取代 `wrangler.jsonc` 裡的 `REPLACE_WITH_KV_NAMESPACE_ID`。請勿在 `wrangler.jsonc` 留下 `REPLACE_WITH_...`。
+命令會建立命名空間並更新 `wrangler.jsonc`。Jason Mail 的 KV binding 必須叫 `FILES`。若你先前建立過命名空間，請保留正確的 ID；不要重複建立或刪除仍有資料的資源。
 
 Durable Object 已在 `wrangler.jsonc` 宣告，部署時會建立聊天室所需的 SQLite-backed Durable Object。**不要建立 R2 bucket**；本專案使用免費額度內的 KV 存附件。
 
@@ -111,35 +110,18 @@ npx wrangler d1 migrations apply jasonmail --remote
 
 若 Wrangler 問你是否確定要套用 migration，輸入 `y`。之後每次更新原始碼，都檢查 README/版本說明有沒有新增 migration；有的話先執行這個命令，再部署 Worker。
 
-### 第 3 步：安全設定 Worker secrets
+### 第 3 步：第一次部署
 
-以下值是秘密，只透過 Wrangler 輸入 Cloudflare，不要貼到 README、程式碼或 GitHub：
-
-| Secret 名稱 | 從哪裡取得 |
-| --- | --- |
-| `SETUP_TOKEN` | 自己產生的一次性長密鑰；第一次建立管理員後可從 Cloudflare 移除 |
-| `RESEND_API_KEY` | Resend Dashboard → API Keys，建立有寄件／收件權限的 key |
-| `RESEND_WEBHOOK_SECRET` | 建立 Resend webhook 時顯示的 signing secret，通常以 `whsec_` 開頭 |
-
-設定命令會安全地逐一提示輸入：
+先完成 D1 migration，再首次部署 Worker：
 
 ```bash
-npx wrangler secret put SETUP_TOKEN
-npx wrangler secret put RESEND_API_KEY
-npx wrangler secret put RESEND_WEBHOOK_SECRET
-```
-
-`SETUP_TOKEN` 請用密碼管理器產生一個至少 32 個隨機位元組的值；例如安裝有 OpenSSL 時執行 `openssl rand -base64 32`。密鑰只用於首次安裝，不要和登入密碼共用。
-
-### 第 4 步：第一次部署
-
-```bash
+npm run build
 npm run deploy
 ```
 
-Wrangler 會打包 `public/` 靜態頁面和 Worker，並在輸出中顯示 `workers.dev` 預覽網址。初次部署後先確認網站能打開；若畫面提示資料庫未就緒，回到第 2 步確認 migration 和資料庫 ID。
+`npm run build` 會檢查必要檔案並執行 Wrangler dry-run。部署前先建立 Worker，之後才能安全地設定 Worker secrets。初次部署會顯示 `workers.dev` 網址；若畫面提示資料庫未就緒，回到第 2 步確認 migration 和資料庫 ID。此時尚未設定郵件服務，首次管理員設定也會保持鎖定。
 
-### 第 5 步：連接自己的網域
+### 第 4 步：連接自己的網域
 
 推薦使用專用子網域，例如 `send.example.com`。這樣不會改動 `example.com` 現有郵件服務。
 
@@ -151,7 +133,7 @@ Wrangler 會打包 `public/` 靜態頁面和 Worker，並在輸出中顯示 `wor
 
 如果你使用 Wrangler 從 Dashboard 建立 Route，確認 Route 指向 `jasonmail` Worker。不要把同一個主機名改成 CNAME；本方案用代理 A 記錄加 Worker Route，讓網站記錄與郵件 MX 記錄可以在同一個主機名配置。
 
-### 第 6 步：建立 Resend 網域和 DNS 記錄
+### 第 5 步：建立 Resend 網域和 DNS 記錄
 
 1. 在 Resend Dashboard → **Domains**，新增你要收發信的郵件網域，例如 `send.example.com`。
 2. 開啟該網域的 **Receiving**。從 Resend 複製寄件驗證和收件所需的 DNS 記錄。
@@ -167,15 +149,35 @@ Wrangler 會打包 `public/` 靜態頁面和 Worker，並在輸出中顯示 `wor
 - Resend 的 DNS 畫面若顯示 `inbound` 這類 Name，代表收件 MX 使用的就是那個子網域。請讓 Jason Mail 使用實際接收郵件的完整網域。
 - SPF、DKIM、DMARC 有助寄件驗證與網域對齊，但無法保證收件方不把信件放進垃圾郵件。寄信域名聲譽、收件方政策和信件內容也會影響投遞。
 
-### 第 7 步：設定收件 Webhook
+### 第 6 步：設定收件 Webhook
 
 在 Resend Dashboard → **Webhooks** 新增 endpoint：
 
 - **Endpoint URL：** `https://send.example.com/api/webhooks/resend`（換成你的網址）。也可以從 Jason Mail「網域與設定」頁面複製。
 - **Event：** 勾選 `email.received`。
-- 建立後複製 signing secret，設定成 `RESEND_WEBHOOK_SECRET`。若剛才先設定 secrets，建立 webhook 後再執行 `npx wrangler secret put RESEND_WEBHOOK_SECRET` 更新。
+- 建立後複製 signing secret（`whsec_...`）。這個值只屬於該 webhook，用來驗證 webhook 簽章，不是 API key，也不是 DNS 記錄。
 
 Webhook 送達時，Jason Mail 會向 Resend API 取得完整正文和附件。請確認 API key 可讀取 Receiving emails；不要把 webhook secret 放進瀏覽器或網站設定頁。
+
+### 第 7 步：設定 Worker secrets
+
+以下三個值用途不同。請勿把任何 secret 貼進原始碼、README、聊天或 GitHub：
+
+| Secret 名稱 | 用途與取得方式 |
+| --- | --- |
+| `SETUP_TOKEN` | 一次性管理員註冊密鑰。用密碼管理器產生至少 32 個隨機位元組；建立管理員後從 Cloudflare 移除。 |
+| `RESEND_API_KEY` | Resend API 憑證；Jason Mail 用它寄信和向 Resend 取得入站郵件正文／附件。從 Resend Dashboard → API Keys 取得。 |
+| `RESEND_WEBHOOK_SECRET` | Resend webhook 的 `whsec_...` signing secret；用來驗證 `email.received` 事件簽章。從 webhook 詳細頁取得。它不是 `RESEND_API_KEY`。 |
+
+在已首次部署 Worker 後，執行以下命令，Wrangler 會逐一安全提示輸入值：
+
+```bash
+npx wrangler secret put SETUP_TOKEN
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put RESEND_WEBHOOK_SECRET
+```
+
+每次設定 secret 都會發佈 Worker 新版本。若只補設 webhook secret，執行 `npx wrangler secret put RESEND_WEBHOOK_SECRET` 即可。值不會寫進 `wrangler.jsonc`。
 
 ### 第 8 步：建立管理員和第一個郵件地址
 
@@ -292,16 +294,16 @@ Wrangler 會顯示本機預覽網址。`.dev.vars` 只供本機使用，不要�
 
 ## English quick start
 
-1. Download and unzip the source. Install Node.js 22+, then run `npm ci` and `npx wrangler login`.
-2. Create D1 with `npx wrangler d1 create jasonmail` and KV with `npx wrangler kv namespace create FILES`. Put both returned IDs in `wrangler.jsonc`.
-3. Run `npx wrangler d1 migrations apply jasonmail --remote`.
-4. Set `SETUP_TOKEN`, `RESEND_API_KEY`, and `RESEND_WEBHOOK_SECRET` with `npx wrangler secret put NAME`.
-5. Run `npm run deploy`. Add a proxied A record and a Worker Route for your chosen hostname.
-6. Verify that same mail domain in Resend, enable receiving, add the DNS records shown by Resend, and create an `email.received` webhook at `https://YOUR-HOST/api/webhooks/resend`.
-7. Open your site, use `SETUP_TOKEN` once to create the admin, remove that secret, add a mailbox, and send/receive a message.
+1. Download the GitHub ZIP, extract it, and double-click `install.cmd`. The Windows installer checks Node.js 22+, guides Cloudflare login, creates or reuses D1/KV, deploys the Worker, and configures the Resend webhook and Worker secrets.
+2. Enter a Resend API key when prompted. If Resend API webhook setup is unavailable, follow the Dashboard fallback and enter the masked `whsec_...` signing secret. `RESEND_API_KEY` and `RESEND_WEBHOOK_SECRET` are different credentials.
+3. Configure your website Worker Route and Resend mail-domain DNS records in Cloudflare/Resend. The installer never edits DNS; use the full guide above for MX, SPF, DKIM, and DMARC.
+4. Open the URL shown by the installer and use the one-time `SETUP_TOKEN` to create the admin account. Then remove that secret in Cloudflare and add your first mailbox.
+
+For manual deployment or macOS/Linux, follow the numbered manual steps above. The webhook URL is `https://YOUR-HOST/api/webhooks/resend` and it must subscribe to `email.received`.
 
 The default deployment uses Cloudflare Free and Resend Free, has no automatic paid upgrade, and stops at local caps of 100 quota units/day and 3,000/month. Outbound recipients count individually; each inbound message counts as one unit. Domain registration may cost money. See the full Chinese guide above for DNS, limits, and troubleshooting.
 
 ## 開源授權
 
 MIT License，詳見 [LICENSE](LICENSE)。
+
