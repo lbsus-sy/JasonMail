@@ -481,7 +481,10 @@ export async function receiveWebhook(request, env) {
   try { event = JSON.parse(rawBody); } catch { return error('Webhook JSON 格式無效。'); }
   const eventId = request.headers.get('svix-id') || request.headers.get('webhook-id') || `${event.type}:${event.data?.email_id || crypto.randomUUID()}`;
   if (event.type === 'email.received') {
-    try { await storeIncoming(env, event, eventId); } catch { return error('收件處理失敗；Resend 可重試此 webhook。', 503); }
+    try { await storeIncoming(env, event, eventId); } catch (cause) {
+      console.error('Jason Mail inbound email processing failed:', cause instanceof Error ? cause.message : 'unknown error');
+      return error('收件處理失敗；Resend 可重試此 webhook。', 503);
+    }
   }
   return json({ ok: true });
 }
@@ -508,4 +511,5 @@ export async function status(request, env) {
   ]);
   return json({ usage, emailDomain: domain?.value || '', mailboxCount: mailboxes?.count || 0, providerConfigured: Boolean(env.RESEND_API_KEY && env.RESEND_WEBHOOK_SECRET) });
 }
+
 
