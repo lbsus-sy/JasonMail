@@ -1,9 +1,17 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛOS¢Ö¥¢ëiºÙbë5{
+{
   "name": "jasonmail",
   "version": "0.1.0",
   "private": true,
   "description": "Self-hosted single-admin webmail for Cloudflare Workers",
-  "type"×Om¢G§²ÚîÆ­yÒwrangler d1 migrations apply jasonmail --remote"
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "wrangler dev",
+    "preview": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply jasonmail --remote",
+    "db:migrate:local": "wrangler d1 migrations apply jasonmail --local",
+    "db:migrate:remote": "wrangler d1 migrations apply jasonmail --remote"
   },
   "devDependencies": {
     "wrangler": "^4.41.0"

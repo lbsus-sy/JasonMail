@@ -1,1 +1,120 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛŸ<N‹Z–‹­¦ëeŠw¬Õ¥µÁ½ÉĞìÕÉÉ•¹ÑUÍ•È°•ÉÉ½È°©Í½¸°±½¥¸°±½¥¹¡…±±•¹”°±½½ÕĞ°É•…‘)Í½¸°É•ÅÕ¥É•ÍÉ˜°É•ÅÕ¥É•M•ÍÍ¥½¸°Í•ÑÕÀ°Í•ÑÕÁMÑ…Ñ”°Ù…±¥‘…Ñ•‘‘É•ÍÌô™É½´€œ¸¿n<òÚ$z{-®éÜj×–Â&WVW7Bf–ÆVC¢rÂ6W6R–ç7Fæ6VöbW'&÷"ò6W6RæÖW76vR¢wVæ¶æ÷vâW'&÷"r“°¢&WGW&âv—F…6V7W&—G”†VFW'2‡6fTf–ÇW&R†6W6R’“°¢Ğ¢ÒÀ§Ó°
+import { currentUser, error, json, login, loginChallenge, logout, readJson, requireCsrf, requireSession, setup, setupState, validateAddress } from './auth.js';
+import {
+  addMailbox, deleteMailbox, deleteMessage, getAttachment, listMailboxes, listMessages, readMessage,
+  receiveWebhook, saveDraft, sendMessage, status as mailStatus, updateMessage, usageStatus,
+} from './mail.js';
+import { adminChat, chatFile, connectChat } from './chat.js';
+
+export { ChatRoom } from './durable/ChatRoom.js';
+
+function withSecurityHeaders(response) {
+  if (response.status === 101) return response;
+  const headers = new Headers(response.headers);
+  headers.set('x-content-type-options', 'nosniff');
+  headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+  headers.set('x-frame-options', 'DENY');
+  headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  headers.set('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss:; frame-src 'self' blob: data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function safeFailure(cause) {
+  const detail = cause instanceof Error ? cause.message : '';
+  if (/quota|resource exhausted|database size|too many requests|limit exceeded|exceeded.{0,30}limit/iu.test(detail)) {
+    return error('Cloudflare å…è²»è³‡æºç›®å‰å·²é”ä¸Šé™ã€‚Jason Mail ä¸æœƒå•Ÿç”¨ä»˜è²»æœå‹™ï¼›è«‹æŸ¥çœ‹ Cloudflare ç”¨é‡ã€æ¸…ç†å¯åˆªé™¤çš„éƒµä»¶æˆ–é™„ä»¶ï¼Œå†é‡è©¦ã€‚æ¯æ—¥é¡åº¦å‰‡éœ€ç­‰é‡ç½®å¾Œå†è©¦ã€‚', 507);
+  }
+  return error('ä¼ºæœå™¨æš«æ™‚ç„¡æ³•è™•ç†æ­¤è¦æ±‚ã€‚è«‹æª¢æŸ¥ Worker è¨­å®šå’Œè³‡æ–™åº«é·ç§»ã€‚', 500);
+}
+
+async function settings(request, env, method) {
+  if (method === 'GET') {
+    const values = await env.DB.prepare('SELECT key, value FROM settings').all();
+    const map = Object.fromEntries(values.results.map((item) => [item.key, item.value]));
+    const chat = await env.DB.prepare('SELECT allow_files, allow_extensions, deny_extensions, max_file_bytes, message_interval_ms FROM chat_settings WHERE id = 1').first();
+    return json({
+      emailDomain: map.email_domain || new URL(request.url).hostname,
+      senderName: map.sender_name || 'Jason Mail',
+      providerConfigured: Boolean(env.RESEND_API_KEY && env.RESEND_WEBHOOK_SECRET),
+      webhookUrl: `${new URL(request.url).origin}/api/webhooks/resend`,
+      chat: {
+        allowFiles: Boolean(chat?.allow_files), allowExtensions: chat?.allow_extensions || '',
+        denyExtensions: chat?.deny_extensions || '', maxFileBytes: chat?.max_file_bytes || 10 * 1024 * 1024,
+        messageIntervalMs: chat?.message_interval_ms || 1000,
+      },
+      usage: await usageStatus(env.DB),
+    });
+  }
+  const auth = await requireCsrf(request, env);
+  if (auth.response) return auth.response;
+  const input = await readJson(request);
+  if (!input) return error('è¨­å®šæ ¼å¼ç„¡æ•ˆã€‚');
+  const emailDomain = String(input.emailDomain || '').trim().toLowerCase();
+  if (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u.test(emailDomain)) return error('è«‹è¼¸å…¥æœ‰æ•ˆçš„éƒµä»¶ç¶²åŸŸã€‚');
+  const old = await env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('email_domain').first();
+  const count = await env.DB.prepare('SELECT COUNT(*) AS count FROM mailboxes').first();
+  if (old?.value && old.value !== emailDomain && count.count > 0) return error('è«‹å…ˆåˆªé™¤ç¾æœ‰åœ°å€ï¼Œæ‰å¯æ›´æ›éƒµä»¶ç¶²åŸŸã€‚', 409);
+  const senderName = String(input.senderName || 'Jason Mail').replace(/[<>\r\n]/gu, '').trim().slice(0, 80) || 'Jason Mail';
+  await env.DB.batch([
+    env.DB.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)').bind('email_domain', emailDomain, Date.now()),
+    env.DB.prepare('INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, ?)').bind('sender_name', senderName, Date.now()),
+  ]);
+  return json({ ok: true, emailDomain, senderName });
+}
+
+async function api(request, env, ctx) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const method = request.method.toUpperCase();
+
+  if (path === '/api/setup/status' && method === 'GET') return setupState(request, env);
+  if (path === '/api/setup' && method === 'POST') return setup(request, env);
+  if (path === '/api/auth/challenge' && method === 'POST') return loginChallenge(request, env);
+  if (path === '/api/auth/login' && method === 'POST') return login(request, env);
+  if (path === '/api/webhooks/resend' && method === 'POST') return receiveWebhook(request, env);
+  if (path === '/api/chat/connect' && method === 'GET') return connectChat(request, env);
+  if (path === '/api/chat/files' && method === 'POST') return chatFile(request, env);
+  const chatFileMatch = path.match(/^\/api\/chat\/files\/([0-9a-f-]{36})$/iu);
+  if (chatFileMatch && method === 'GET') return chatFile(request, env, chatFileMatch[1]);
+
+  const session = await requireSession(request, env);
+  if (session.response) return session.response;
+  if (path === '/api/auth/me' && method === 'GET') return currentUser(request, env);
+  if (path === '/api/auth/logout' && method === 'POST') return logout(request, env);
+  if (path === '/api/settings' && (method === 'GET' || method === 'PUT')) return settings(request, env, method);
+  if (path === '/api/status' && method === 'GET') return mailStatus(request, env);
+  if (path === '/api/mailboxes' && method === 'GET') return listMailboxes(env);
+  if (path === '/api/mailboxes' && method === 'POST') return addMailbox(request, env);
+  const mailboxMatch = path.match(/^\/api\/mailboxes\/([0-9a-f-]{36})$/iu);
+  if (mailboxMatch && method === 'DELETE') return deleteMailbox(request, env, mailboxMatch[1]);
+  if (path === '/api/messages' && method === 'GET') return listMessages(request, env);
+  const messageMatch = path.match(/^\/api\/messages\/([0-9a-f-]{36})$/iu);
+  if (messageMatch && method === 'GET') return readMessage(request, env, messageMatch[1]);
+  if (messageMatch && method === 'PATCH') return updateMessage(request, env, messageMatch[1]);
+  if (messageMatch && method === 'DELETE') return deleteMessage(request, env, messageMatch[1]);
+  if (path === '/api/drafts' && method === 'POST') return saveDraft(request, env);
+  const draftMatch = path.match(/^\/api\/drafts\/([0-9a-f-]{36})$/iu);
+  if (draftMatch && method === 'PUT') return saveDraft(request, env, draftMatch[1]);
+  if (path === '/api/send' && method === 'POST') return sendMessage(request, env);
+  if (path === '/api/attachments' && method === 'GET') {
+    const id = url.searchParams.get('id');
+    if (!id || !/^[0-9a-f-]{36}$/iu.test(id)) return error('é™„ä»¶ ID ç„¡æ•ˆã€‚', 400);
+    return getAttachment(request, env, id);
+  }
+  const chatAdminMatch = path.match(/^\/api\/chat\/admin\/(status|enable|disable|rotate|settings)$/u);
+  if (chatAdminMatch && ['GET', 'POST'].includes(method)) return adminChat(request, env, chatAdminMatch[1]);
+  return error('æ‰¾ä¸åˆ°æ­¤ API è·¯å¾‘ã€‚', 404);
+}
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    try {
+      if (url.pathname.startsWith('/api/')) return withSecurityHeaders(await api(request, env, ctx));
+      if (url.pathname.startsWith('/privchat/')) return withSecurityHeaders(await env.ASSETS.fetch(new Request(new URL('/', request.url), request)));
+      return withSecurityHeaders(await env.ASSETS.fetch(request));
+    } catch (cause) {
+      console.error('Jason Mail request failed:', cause instanceof Error ? cause.message : 'unknown error');
+      return withSecurityHeaders(safeFailure(cause));
+    }
+  },
+};
