@@ -618,9 +618,17 @@ function Test-AdminConfigured {
         Write-Host '無法自動確認網站是否已有管理員。' -ForegroundColor Yellow
     }
 
-    $answer = Read-Host '這是第一次建立管理員嗎？輸入 Y 產生一次性 SETUP_TOKEN；已設定過請輸入 N'
-    $normalizedAnswer = $answer.Trim().ToLowerInvariant()
-    return $normalizedAnswer -eq 'y' -or $normalizedAnswer -eq 'yes'
+    do {
+        $answer = Read-Host '這是第一次建立管理員嗎？輸入 Y 產生一次性 SETUP_TOKEN；已設定過請輸入 N'
+        $normalizedAnswer = $answer.Trim().ToLowerInvariant()
+        if ($normalizedAnswer -eq 'y' -or $normalizedAnswer -eq 'yes') {
+            return $false
+        }
+        if ($normalizedAnswer -eq 'n' -or $normalizedAnswer -eq 'no') {
+            return $true
+        }
+        Write-Host '請輸入 Y（第一次建立）或 N（已經建立管理員）。' -ForegroundColor Yellow
+    } while ($true)
 }
 
 function Set-WorkerSecrets {
