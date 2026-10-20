@@ -1,0 +1,17 @@
+node_modules/
+.wrangler/
+.wrangler-user-config/
+dist/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+coverage/
+.DS_Store
+Thumbs.db
+npm-debug.log*
+
+.superpowers/
+

@@ -1,0 +1,9 @@
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛİ“¢Ö¥¢ëiºÙbë5{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "jasonmail",
+  "main": "src/worker/index.js",
+  "compatibility_date": "2026-10-01×İ­¢G§²ÚîÆ­yİ", "class_name": "ChatRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ChatRoom"] }],
+  "observability": { "enabled": true }
+}

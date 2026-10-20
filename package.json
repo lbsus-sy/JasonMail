@@ -1,0 +1,14 @@
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛOS¢Ö¥¢ëiºÙbë5{
+  "name": "jasonmail",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted single-admin webmail for Cloudflare Workers",
+  "type"×Om¢G§²ÚîÆ­yÒwrangler d1 migrations apply jasonmail --remote"
+  },
+  "devDependencies": {
+    "wrangler": "^4.41.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

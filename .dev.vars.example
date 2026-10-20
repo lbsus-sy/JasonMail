@@ -1,0 +1,4 @@
+# Copy this file to .dev.vars for local development. Do not commit real values.
+SETUP_TOKEN="replace-with-a-long-random-one-time-setup-token"
+RESEND_API_KEY="re_..."
+RESEND_WEBHOOK_SECRET="whsec_..."
