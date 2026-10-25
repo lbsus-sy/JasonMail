@@ -370,7 +370,17 @@ function openCompose({ draft = null, reply = null, forward = null } = {}) {
   const html = `<div class="modal-scrim" data-action="close-compose"><section class="compose-window" role="dialog" aria-modal="true" aria-labelledby="compose-title"><header class="compose-head"><div><p class="eyebrow">NEW MESSAGE</p><h2 id="compose-title">${reply ? '回覆郵件' : forward ? '轉寄郵件' : draft ? '編輯草稿' : '撰寫郵件'}</h2></div><button class="icon-button" data-action="close-compose" title="關閉">×</button></header><form id="compose-form"><label class="compose-line"><span>寄件人</span><select name="from" required>${state.mailboxes.map((mailbox) => `<option value="${escapeHtml(mailbox.address)}" ${mailbox.address === defaultFrom ? 'selected' : ''}>${escapeHtml(mailbox.address)}</option>`).join('')}</select></label><label class="compose-line"><span>收件人</span><input name="to" value="${escapeHtml(to)}" placeholder="name@example.com，多位請用逗號分隔" required /></label><details class="cc-fields" ${cc || bcc ? 'open' : ''}><summary>副本與密件副本</summary><label class="compose-line"><span>副本</span><input name="cc" value="${escapeHtml(cc)}" placeholder="name@example.com" /></label><label class="compose-line"><span>密件副本</span><input name="bcc" value="${escapeHtml(bcc)}" placeholder="name@example.com" /></label></details><label class="compose-line"><span>主旨</span><input name="subject" value="${escapeHtml(draft?.subject || (forward ? `Fwd: ${forward.subject}` : reply ? `Re: ${reply.subject}` : ''))}" placeholder="郵件主旨" required /></label><textarea name="text" class="compose-body" placeholder="寫下你的郵件…" required>${escapeHtml(draft?.text || '')}${escapeHtml(quote)}</textarea><div class="compose-foot"><label class="attach-action">⌕ 附加檔案<input type="file" name="files" multiple /></label><span id="attachment-note">附件總計上限 10 MiB</span><div class="compose-spacer"></div><button type="button" class="button button-quiet" data-action="save-draft">存成草稿</button><button class="button button-primary" type="submit">寄出　↗</button></div><input type="hidden" name="draftId" value="${escapeHtml(draft?.id || '')}" /><input type="hidden" name="replyToId" value="${escapeHtml(reply?.externalId || '')}" /><input type="hidden" name="replyToThread" value="${escapeHtml(reply?.threadId || reply?.id || '')}" /></form></section></div>`;
   document.querySelector('#modal-root').innerHTML = html;
   const scrim = document.querySelector('.modal-scrim');
-  scrim.addEventListener('click', (event) => { if (event.target === scrim || event.target.closest('[data-action="close-compose"]')) document.querySelector('#modal-root').innerHTML = ''; });
+ 
+scrim.addEventListener('click', (event) => {
+  const closeButton = event.target.closest(
+    'button[data-action="close-compose"]'
+  );
+
+  if (event.target === scrim || closeButton) {
+    document.querySelector('#modal-root').innerHTML = '';
+  }
+});
+
   const form = document.querySelector('#compose-form');
   form.addEventListener('change', () => {
     const files = [...form.elements.files.files]; const total = files.reduce((sum, file) => sum + file.size, 0);
